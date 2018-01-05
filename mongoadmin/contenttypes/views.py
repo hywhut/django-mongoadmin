@@ -1,7 +1,8 @@
 from __future__ import unicode_literals
 
 from django import http
-from django.contrib.sites.models import Site, get_current_site
+from django.contrib.sites.models import Site
+from django.contrib.sites.shortcuts import get_current_site
 from django.utils.translation import ugettext as _
 
 from mongoadmin.contenttypes.models import ContentType

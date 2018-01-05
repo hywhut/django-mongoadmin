@@ -82,18 +82,17 @@ def label_for_field(name, model, model_admin=None, return_attr=False):
     else:
         return label
 
-def display_for_field(value, field):
+def display_for_field(value, field, empty_value_display=None):
     from django.contrib.admin.templatetags.admin_list import _boolean_icon
-    from django.contrib.admin.views.main import EMPTY_CHANGELIST_VALUE   
 
     if field.flatchoices:
-        return dict(field.flatchoices).get(value, EMPTY_CHANGELIST_VALUE)
+        return dict(field.flatchoices).get(value, empty_value_display)
     # NullBooleanField needs special-case null-handling, so it comes
     # before the general null test.
     elif isinstance(field, fields.BooleanField):
         return _boolean_icon(value)
     elif value is None:
-        return EMPTY_CHANGELIST_VALUE
+        return empty_value_display
     elif isinstance(field, fields.DateTimeField):
         return formats.localize(value)
     elif isinstance(field, fields.DecimalField):

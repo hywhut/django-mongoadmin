@@ -1,7 +1,6 @@
 import sys
 
 from django.conf import settings
-from django.db.models import get_model
 
 from mongoengine.base.common import _document_registry
 
@@ -21,6 +20,7 @@ def has_rel_db():
     
 def get_model_or_document(app_label, model):
     if has_rel_db():
+        from django.db.models import get_model
         return get_model(app_label, model, only_installed=False)
     else:
         # mongoengine's document registry is case sensitive

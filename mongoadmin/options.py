@@ -1,16 +1,18 @@
 import collections
 from functools import partial
 
+import operator
 from django import forms
 from django.forms.models import modelform_defines_fields
 from django.contrib.admin.options import ModelAdmin, InlineModelAdmin, get_ul_class
 from django.contrib.admin import widgets
-from django.contrib.admin.util import flatten_fieldsets
+from django.contrib.admin.utils import flatten_fieldsets, lookup_needs_distinct
 from django.core.exceptions import FieldError, ValidationError
 from django.forms.formsets import DELETION_FIELD_NAME
 from django.utils.translation import ugettext as _
-from django.contrib.admin.util import NestedObjects
+from django.contrib.admin.utils import NestedObjects
 from django.utils.text import get_text_list
+from mongoengine import Q
 
 from mongoengine.fields import (DateTimeField, URLField, IntField, ListField, EmbeddedDocumentField,
                                 ReferenceField, StringField, FileField, ImageField)
@@ -170,6 +172,8 @@ class DocumentAdmin(MongoFormFieldMixin, ModelAdmin):
 
     def __init__(self, model, admin_site):
         super(DocumentAdmin, self).__init__(model, admin_site)
+        for field in self.model._fields.values():
+            field.remote_field = None
 
         self.inlines = self._find_embedded_inlines()
 
@@ -312,7 +316,7 @@ class DocumentAdmin(MongoFormFieldMixin, ModelAdmin):
         for formset in formsets:
             self.save_formset(request, form, formset, change=change)
 
-    def log_addition(self, request, object):
+    def log_addition(self, request, object, message):
         """
         Log that an object has been successfully added.
 
@@ -321,7 +325,7 @@ class DocumentAdmin(MongoFormFieldMixin, ModelAdmin):
         if not is_django_user_model(request.user):
             return
 
-        super(DocumentAdmin, self).log_addition(request=request, object=object)
+        super(DocumentAdmin, self).log_addition(request=request, object=object, message=message)
 
     def log_change(self, request, object, message):
         """
@@ -347,6 +351,38 @@ class DocumentAdmin(MongoFormFieldMixin, ModelAdmin):
         super(DocumentAdmin, self).log_deletion(
             request=request, object=object, object_repr=object_repr)
 
+    def get_search_results(self, request, queryset, search_term):
+        """
+        Returns a tuple containing a queryset to implement the search,
+        and a boolean indicating if the results may contain duplicates.
+        """
+        # Apply keyword searches.
+        def construct_search(field_name):
+            if field_name.startswith('^'):
+                return "%s__istartswith" % field_name[1:]
+            elif field_name.startswith('='):
+                return "%s__iexact" % field_name[1:]
+            elif field_name.startswith('@'):
+                return "%s__search" % field_name[1:]
+            else:
+                return "%s__icontains" % field_name
+
+        use_distinct = False
+        search_fields = self.get_search_fields(request)
+        if search_fields and search_term:
+            orm_lookups = [construct_search(str(search_field))
+                           for search_field in search_fields]
+            for bit in search_term.split():
+                or_queries = [Q(**{orm_lookup: bit})
+                              for orm_lookup in orm_lookups]
+                queryset = queryset.filter(reduce(operator.or_, or_queries))
+            if not use_distinct:
+                for search_spec in orm_lookups:
+                    if lookup_needs_distinct(self.opts, search_spec):
+                        use_distinct = True
+                        break
+
+        return queryset, use_distinct
 
 class EmbeddedInlineAdmin(MongoFormFieldMixin, InlineModelAdmin):
     parent_field_name = None
